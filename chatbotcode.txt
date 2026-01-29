@@ -1,0 +1,625 @@
+cat > crypto_pro_complete.py << 'EOF'
+#!/usr/bin/env python3
+"""
+🔐 CRYPTOBOT PRO COMPLETE
+Tous les algorithmes : Vigenère, César, Enigma, AES, ChaCha20, RSA, SHA-256
+"""
+
+import base64
+import json
+import hashlib
+from Crypto.Cipher import AES, ChaCha20
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_OAEP
+from Crypto.Signature import pkcs1_15
+from Crypto.Hash import SHA256
+from Crypto.Random import get_random_bytes
+from Crypto.Protocol.KDF import PBKDF2, scrypt
+from Crypto.Util.Padding import pad, unpad
+
+class CryptoBotPro:
+    def __init__(self):
+        print("\n" + "="*60)
+        print("🔐 CRYPTOBOT PRO - TOUS LES ALGORITHMES")
+        print("="*60)
+        print("Vigenère | César | Enigma | AES | ChaCha20 | RSA | SHA-256")
+        print("="*60)
+        
+        self.rsa_keys = {}
+    
+    # ====================================================
+    # 🏛️ ALGORITHMES CLASSIQUES
+    # ====================================================
+    
+    def vigenere(self, text, key, mode='encrypt'):
+        """Vigenère"""
+        key = key.upper().replace(' ', '')
+        result = []
+        key_index = 0
+        
+        for char in text:
+            if char.isalpha():
+                is_upper = char.isupper()
+                char_upper = char.upper()
+                
+                key_char = key[key_index % len(key)]
+                shift = ord(key_char) - ord('A')
+                
+                if mode == 'decrypt':
+                    shift = -shift
+                
+                new_char = chr((ord(char_upper) - ord('A') + shift) % 26 + ord('A'))
+                
+                if not is_upper:
+                    new_char = new_char.lower()
+                
+                result.append(new_char)
+                key_index += 1
+            else:
+                result.append(char)
+        
+        return ''.join(result)
+    
+    def caesar(self, text, shift, mode='encrypt'):
+        """César"""
+        if mode == 'decrypt':
+            shift = -shift
+        
+        result = []
+        for char in text:
+            if char.isalpha():
+                is_upper = char.isupper()
+                base = ord('A') if is_upper else ord('a')
+                new_char = chr((ord(char) - base + shift) % 26 + base)
+                result.append(new_char)
+            else:
+                result.append(char)
+        
+        return ''.join(result)
+    
+    def enigma(self, text, rotors=['I', 'II', 'III'], reflector='B', position='AAA'):
+        """Enigma Machine (simplifiée)"""
+        # Rotors historiques
+        rotor_wirings = {
+            'I':    'EKMFLGDQVZNTOWYHXUSPAIBRCJ',
+            'II':   'AJDKSIRUXBLHWTMCQGZNPYFVOE',
+            'III':  'BDFHJLCPRTXVZNYEIWGAKMUSQO',
+            'IV':   'ESOVPZJAYQUIRHXLNFTGKDCMWB',
+            'V':    'VZBRGITYUPSDNHLXAWMJQOFECK'
+        }
+        
+        reflectors = {
+            'B': 'YRUHQSLDPXNGOKMIEBFZCWVJAT',
+            'C': 'FVPJIAOYEDRZXWGCTKUQSBNMHL'
+        }
+        
+        result = []
+        rotor_pos = [ord(c) - ord('A') for c in position]
+        
+        for char in text.upper():
+            if 'A' <= char <= 'Z':
+                idx = ord(char) - ord('A')
+                
+                # Avancer les rotors
+                rotor_pos[0] = (rotor_pos[0] + 1) % 26
+                if rotor_pos[0] == 0:
+                    rotor_pos[1] = (rotor_pos[1] + 1) % 26
+                    if rotor_pos[1] == 0:
+                        rotor_pos[2] = (rotor_pos[2] + 1) % 26
+                
+                # Passage à travers les rotors (de droite à gauche)
+                idx = (idx + rotor_pos[0]) % 26
+                idx = ord(rotor_wirings[rotors[0]][idx]) - ord('A')
+                
+                idx = (idx - rotor_pos[0] + rotor_pos[1]) % 26
+                idx = ord(rotor_wirings[rotors[1]][idx]) - ord('A')
+                
+                idx = (idx - rotor_pos[1] + rotor_pos[2]) % 26
+                idx = ord(rotor_wirings[rotors[2]][idx]) - ord('A')
+                
+                idx = (idx - rotor_pos[2]) % 26
+                
+                # Réflecteur
+                idx = ord(reflectors[reflector][idx]) - ord('A')
+                idx = (idx + rotor_pos[2]) % 26
+                
+                # Retour à travers les rotors (de gauche à droite)
+                idx = rotor_wirings[rotors[2]].index(chr(idx + ord('A')))
+                idx = (idx + rotor_pos[1] - rotor_pos[2]) % 26
+                
+                idx = rotor_wirings[rotors[1]].index(chr(idx + ord('A')))
+                idx = (idx + rotor_pos[0] - rotor_pos[1]) % 26
+                
+                idx = rotor_wirings[rotors[0]].index(chr(idx + ord('A')))
+                idx = (idx - rotor_pos[0]) % 26
+                
+                result.append(chr(idx + ord('A')))
+            else:
+                result.append(char)
+        
+        return ''.join(result)
+    
+    # ====================================================
+    # 🔐 ALGORITHMES SYMÉTRIQUES MODERNES
+    # ====================================================
+    
+    def aes_encrypt(self, text, password=None):
+        """AES-256-GCM (authentifié)"""
+        if password is None:
+            password = input("🔑 Mot de passe AES: ").strip()
+        
+        salt = get_random_bytes(16)
+        key = PBKDF2(password, salt, dkLen=32, count=100000)
+        
+        cipher = AES.new(key, AES.MODE_GCM)
+        ct_bytes, tag = cipher.encrypt_and_digest(text.encode('utf-8'))
+        
+        return json.dumps({
+            'algorithm': 'AES-256-GCM',
+            'ciphertext': base64.b64encode(ct_bytes).decode(),
+            'iv': base64.b64encode(cipher.nonce).decode(),
+            'salt': base64.b64encode(salt).decode(),
+            'tag': base64.b64encode(tag).decode()
+        }, indent=2)
+    
+    def aes_decrypt(self, data, password=None):
+        """Déchiffrement AES"""
+        if password is None:
+            password = input("🔑 Mot de passe AES: ").strip()
+        
+        try:
+            data_dict = json.loads(data)
+            
+            ct = base64.b64decode(data_dict['ciphertext'])
+            iv = base64.b64decode(data_dict['iv'])
+            salt = base64.b64decode(data_dict['salt'])
+            tag = base64.b64decode(data_dict['tag'])
+            
+            key = PBKDF2(password, salt, dkLen=32, count=100000)
+            cipher = AES.new(key, AES.MODE_GCM, nonce=iv)
+            pt = cipher.decrypt_and_verify(ct, tag)
+            
+            return pt.decode('utf-8')
+        except Exception as e:
+            return f"❌ Erreur: {str(e)}"
+    
+    def chacha20_encrypt(self, text, password=None):
+        """ChaCha20 (optimisé pour ARM/Raspberry Pi)"""
+        if password is None:
+            password = input("🔑 Mot de passe ChaCha20: ").strip()
+        
+        salt = get_random_bytes(16)
+        key = scrypt(password, salt, key_len=32, N=2**14, r=8, p=1)
+        
+        cipher = ChaCha20.new(key=key)
+        ct_bytes = cipher.encrypt(text.encode('utf-8'))
+        
+        return json.dumps({
+            'algorithm': 'ChaCha20',
+            'ciphertext': base64.b64encode(ct_bytes).decode(),
+            'nonce': base64.b64encode(cipher.nonce).decode(),
+            'salt': base64.b64encode(salt).decode()
+        }, indent=2)
+    
+    def chacha20_decrypt(self, data, password=None):
+        """Déchiffrement ChaCha20"""
+        if password is None:
+            password = input("🔑 Mot de passe ChaCha20: ").strip()
+        
+        try:
+            data_dict = json.loads(data)
+            
+            ct = base64.b64decode(data_dict['ciphertext'])
+            nonce = base64.b64decode(data_dict['nonce'])
+            salt = base64.b64decode(data_dict['salt'])
+            
+            key = scrypt(password, salt, key_len=32, N=2**14, r=8, p=1)
+            cipher = ChaCha20.new(key=key, nonce=nonce)
+            pt = cipher.decrypt(ct)
+            
+            return pt.decode('utf-8')
+        except Exception as e:
+            return f"❌ Erreur: {str(e)}"
+    
+    # ====================================================
+    # 🔑 ALGORITHMES ASYMÉTRIQUES
+    # ====================================================
+    
+    def rsa_generate_keys(self, key_size=2048):
+        """Génère une paire de clés RSA"""
+        print(f"⏳ Génération clés RSA-{key_size} (peut prendre quelques secondes)...")
+        
+        key = RSA.generate(key_size)
+        self.rsa_keys['private'] = key.export_key().decode('utf-8')
+        self.rsa_keys['public'] = key.publickey().export_key().decode('utf-8')
+        
+        return {
+            'algorithm': f'RSA-{key_size}',
+            'private_key_preview': self.rsa_keys['private'][:100] + "...",
+            'public_key_preview': self.rsa_keys['public'][:100] + "...",
+            'private_key_file': 'rsa_private.pem',
+            'public_key_file': 'rsa_public.pem'
+        }
+    
+    def rsa_encrypt(self, text, public_key=None):
+        """Chiffrement RSA"""
+        if public_key is None:
+            if 'public' not in self.rsa_keys:
+                return "❌ Aucune clé publique disponible. Générer d'abord avec 'rsa generate'"
+            public_key = self.rsa_keys['public']
+        
+        try:
+            key = RSA.import_key(public_key)
+            cipher = PKCS1_OAEP.new(key)
+            
+            # RSA a une limite de taille, on doit segmenter pour les longs textes
+            max_length = key.size_in_bytes() - 42  # Pour PKCS1_OAEP
+            
+            if len(text.encode('utf-8')) > max_length:
+                return f"❌ Texte trop long pour RSA. Maximum: {max_length} bytes"
+            
+            ct_bytes = cipher.encrypt(text.encode('utf-8'))
+            
+            return {
+                'algorithm': 'RSA-OAEP',
+                'ciphertext': base64.b64encode(ct_bytes).decode(),
+                'key_size': key.size_in_bits()
+            }
+        except Exception as e:
+            return f"❌ Erreur: {str(e)}"
+    
+    def rsa_decrypt(self, ciphertext, private_key=None):
+        """Déchiffrement RSA"""
+        if private_key is None:
+            if 'private' not in self.rsa_keys:
+                return "❌ Aucune clé privée disponible"
+            private_key = self.rsa_keys['private']
+        
+        try:
+            key = RSA.import_key(private_key)
+            cipher = PKCS1_OAEP.new(key)
+            
+            ct = base64.b64decode(ciphertext)
+            pt = cipher.decrypt(ct)
+            
+            return pt.decode('utf-8')
+        except Exception as e:
+            return f"❌ Erreur: {str(e)}"
+    
+    def rsa_sign(self, message, private_key=None):
+        """Signature RSA"""
+        if private_key is None:
+            if 'private' not in self.rsa_keys:
+                return "❌ Aucune clé privée disponible"
+            private_key = self.rsa_keys['private']
+        
+        try:
+            key = RSA.import_key(private_key)
+            h = SHA256.new(message.encode('utf-8'))
+            signature = pkcs1_15.new(key).sign(h)
+            
+            return {
+                'algorithm': 'RSA-PKCS1.5-SHA256',
+                'signature': base64.b64encode(signature).decode(),
+                'message_hash': h.hexdigest()
+            }
+        except Exception as e:
+            return f"❌ Erreur: {str(e)}"
+    
+    def rsa_verify(self, message, signature, public_key=None):
+        """Vérification signature RSA"""
+        if public_key is None:
+            if 'public' not in self.rsa_keys:
+                return "❌ Aucune clé publique disponible"
+            public_key = self.rsa_keys['public']
+        
+        try:
+            key = RSA.import_key(public_key)
+            h = SHA256.new(message.encode('utf-8'))
+            sig = base64.b64decode(signature)
+            pkcs1_15.new(key).verify(h, sig)
+            return "✅ Signature valide"
+        except (ValueError, TypeError) as e:
+            return f"❌ Signature invalide: {str(e)}"
+    
+    # ====================================================
+    # 📜 HACHAGE
+    # ====================================================
+    
+    def sha256_hash(self, text):
+        """Calcule le hash SHA-256"""
+        # Hash simple
+        simple_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+        
+        # Hash avec sel (pour les mots de passe)
+        salt = get_random_bytes(16).hex()
+        salted_hash = hashlib.sha256((text + salt).encode('utf-8')).hexdigest()
+        
+        return {
+            'algorithm': 'SHA-256',
+            'hash': simple_hash,
+            'salted_hash': salted_hash,
+            'salt': salt,
+            'length': len(simple_hash)
+        }
+    
+    def verify_hash(self, text, hash_to_verify):
+        """Vérifie un hash SHA-256"""
+        computed_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+        
+        if computed_hash == hash_to_verify:
+            return "✅ Hash valide"
+        else:
+            return f"❌ Hash invalide. Computé: {computed_hash[:16]}..."
+    
+    # ====================================================
+    # 🎮 INTERFACE UTILISATEUR
+    # ====================================================
+    
+    def show_menu(self):
+        """Affiche le menu principal"""
+        menu = """
+🔐 CRYPTOBOT PRO - MENU PRINCIPAL:
+
+🏛️  CLASSIQUE:
+  1. Vigenère (chiffrer)
+  2. Vigenère (déchiffrer)
+  3. César (chiffrer)
+  4. César (déchiffrer)
+  5. Enigma
+
+🔐 SYMÉTRIQUE MODERNE:
+  6. AES-256-GCM (chiffrer)
+  7. AES-256-GCM (déchiffrer)
+  8. ChaCha20 (chiffrer) - Optimisé RPi
+  9. ChaCha20 (déchiffrer)
+
+🔑 ASYMÉTRIQUE:
+  10. RSA (générer clés)
+  11. RSA (chiffrer)
+  12. RSA (déchiffrer)
+  13. RSA (signer)
+  14. RSA (vérifier signature)
+
+📜 HACHAGE:
+  15. SHA-256 (calculer hash)
+  16. SHA-256 (vérifier hash)
+
+🔧 UTILITAIRES:
+  17. Afficher clés RSA
+  18. Sauver clés dans fichiers
+  19. Aide / Info algorithmes
+  20. Quitter
+
+Choisis une option (1-20):
+"""
+        print(menu)
+    
+    def show_algorithm_info(self):
+        """Informations sur les algorithmes"""
+        info = """
+📚 INFORMATIONS SUR LES ALGORITHMES:
+
+🏛️  CLASSIQUE:
+  • Vigenère (16e siècle): Chiffrement polyalphabétique avec clé
+  • César (Jules César): Simple décalage de lettres
+  • Enigma (WW2): Machine de chiffrement allemande
+
+🔐 SYMÉTRIQUE MODERNE:
+  • AES-256-GCM: Standard actuel, authentifié, rapide
+  • ChaCha20: Alternative à AES, optimisé pour ARM (Raspberry Pi)
+
+🔑 ASYMÉTRIQUE:
+  • RSA: Cryptographie à clé publique/publique
+  • Permet chiffrement, signatures digitales
+
+📜 HACHAGE:
+  • SHA-256: Fonction de hachage cryptographique
+  • Utilisé pour: vérifier intégrité, stocker mots de passe
+
+💡 CONSEILS:
+  • Pour fichiers: AES ou ChaCha20
+  • Pour échanges sécurisés: RSA + AES
+  • Pour mots de passe: SHA-256 avec sel
+  • Pour Raspberry Pi: ChaCha20 est plus rapide
+"""
+        print(info)
+    
+    def save_keys_to_files(self):
+        """Sauvegarde les clés RSA dans des fichiers"""
+        if 'private' not in self.rsa_keys:
+            print("❌ Aucune clé RSA à sauvegarder")
+            return
+        
+        try:
+            with open('rsa_private.pem', 'w') as f:
+                f.write(self.rsa_keys['private'])
+            
+            with open('rsa_public.pem', 'w') as f:
+                f.write(self.rsa_keys['public'])
+            
+            print("✅ Clés sauvegardées:")
+            print("   • rsa_private.pem (GARDEZ SECRET!)")
+            print("   • rsa_public.pem (peut être partagé)")
+        except Exception as e:
+            print(f"❌ Erreur sauvegarde: {str(e)}")
+    
+    def run(self):
+        """Boucle principale"""
+        print("\n🚀 CryptoBot Pro prêt!")
+        
+        while True:
+            self.show_menu()
+            
+            try:
+                choice = input("> ").strip()
+                
+                if choice == '20' or choice.lower() == 'quit':
+                    print("👋 Au revoir!")
+                    break
+                
+                # Vigenère
+                elif choice == '1':
+                    text = input("Texte à chiffrer: ").strip()
+                    key = input("Clé Vigenère: ").strip()
+                    result = self.vigenere(text, key, 'encrypt')
+                    print(f"🔐 Résultat: {result}")
+                
+                elif choice == '2':
+                    text = input("Texte à déchiffrer: ").strip()
+                    key = input("Clé Vigenère: ").strip()
+                    result = self.vigenere(text, key, 'decrypt')
+                    print(f"🔓 Résultat: {result}")
+                
+                # César
+                elif choice == '3':
+                    text = input("Texte à chiffrer: ").strip()
+                    shift = int(input("Décalage (0-25): ").strip())
+                    result = self.caesar(text, shift, 'encrypt')
+                    print(f"🔐 Résultat: {result}")
+                
+                elif choice == '4':
+                    text = input("Texte à déchiffrer: ").strip()
+                    shift = int(input("Décalage (0-25): ").strip())
+                    result = self.caesar(text, shift, 'decrypt')
+                    print(f"🔓 Résultat: {result}")
+                
+                # Enigma
+                elif choice == '5':
+                    text = input("Texte pour Enigma: ").strip()
+                    result = self.enigma(text)
+                    print(f"🔐 Résultat Enigma: {result}")
+                
+                # AES
+                elif choice == '6':
+                    text = input("Texte à chiffrer: ").strip()
+                    result = self.aes_encrypt(text)
+                    print(f"🔐 AES (copier tout):\n{result}")
+                
+                elif choice == '7':
+                    data = input("Données AES (JSON): ").strip()
+                    result = self.aes_decrypt(data)
+                    print(f"🔓 Résultat: {result}")
+                
+                # ChaCha20
+                elif choice == '8':
+                    text = input("Texte à chiffrer: ").strip()
+                    result = self.chacha20_encrypt(text)
+                    print(f"🔐 ChaCha20 (copier tout):\n{result}")
+                
+                elif choice == '9':
+                    data = input("Données ChaCha20 (JSON): ").strip()
+                    result = self.chacha20_decrypt(data)
+                    print(f"🔓 Résultat: {result}")
+                
+                # RSA
+                elif choice == '10':
+                    try:
+                        size = int(input("Taille clé (1024, 2048, 4096) [2048]: ") or "2048")
+                        result = self.rsa_generate_keys(size)
+                        print(f"🔑 Clés générées:")
+                        for key, value in result.items():
+                            print(f"  {key}: {value}")
+                    except ValueError:
+                        print("❌ Taille invalide")
+                
+                elif choice == '11':
+                    if 'public' not in self.rsa_keys:
+                        print("❌ Générer d'abord des clés RSA (option 10)")
+                        continue
+                    text = input("Texte à chiffrer: ").strip()
+                    result = self.rsa_encrypt(text)
+                    if isinstance(result, dict):
+                        print(f"🔐 RSA chiffré:")
+                        for key, value in result.items():
+                            print(f"  {key}: {value}")
+                    else:
+                        print(result)
+                
+                elif choice == '12':
+                    if 'private' not in self.rsa_keys:
+                        print("❌ Générer d'abord des clés RSA (option 10)")
+                        continue
+                    text = input("Texte chiffré (base64): ").strip()
+                    result = self.rsa_decrypt(text)
+                    print(f"🔓 Résultat: {result}")
+                
+                elif choice == '13':
+                    if 'private' not in self.rsa_keys:
+                        print("❌ Générer d'abord des clés RSA (option 10)")
+                        continue
+                    message = input("Message à signer: ").strip()
+                    result = self.rsa_sign(message)
+                    if isinstance(result, dict):
+                        print(f"✍️  Signature RSA:")
+                        for key, value in result.items():
+                            print(f"  {key}: {value}")
+                    else:
+                        print(result)
+                
+                elif choice == '14':
+                    if 'public' not in self.rsa_keys:
+                        print("❌ Générer d'abord des clés RSA (option 10)")
+                        continue
+                    message = input("Message original: ").strip()
+                    signature = input("Signature (base64): ").strip()
+                    result = self.rsa_verify(message, signature)
+                    print(f"🔍 {result}")
+                
+                # SHA-256
+                elif choice == '15':
+                    text = input("Texte à hacher: ").strip()
+                    result = self.sha256_hash(text)
+                    print(f"📜 Hash SHA-256:")
+                    for key, value in result.items():
+                        print(f"  {key}: {value}")
+                
+                elif choice == '16':
+                    text = input("Texte original: ").strip()
+                    hash_val = input("Hash à vérifier: ").strip()
+                    result = self.verify_hash(text, hash_val)
+                    print(result)
+                
+                # Utilitaires
+                elif choice == '17':
+                    if self.rsa_keys:
+                        print("🔑 Clés RSA en mémoire:")
+                        for key_type, key_value in self.rsa_keys.items():
+                            print(f"\n{key_type}:")
+                            print(key_value[:200] + "..." if len(key_value) > 200 else key_value)
+                    else:
+                        print("📭 Aucune clé RSA en mémoire")
+                
+                elif choice == '18':
+                    self.save_keys_to_files()
+                
+                elif choice == '19':
+                    self.show_algorithm_info()
+                
+                else:
+                    print("❌ Option invalide")
+                
+                input("\n↵ Appuyez sur Entrée pour continuer...")
+                
+            except KeyboardInterrupt:
+                print("\n\n👋 Interrompu")
+                break
+            except Exception as e:
+                print(f"⚠️  Erreur: {str(e)}")
+                input("\n↵ Appuyez sur Entrée pour continuer...")
+
+def main():
+    """Point d'entrée"""
+    try:
+        from Crypto.Cipher import AES
+        from Crypto.PublicKey import RSA
+        bot = CryptoBotPro()
+        bot.run()
+    except ImportError:
+        print("❌ pycryptodome manquant!")
+        print("👉 source cryptobot_env/bin/activate")
+        print("👉 pip install pycryptodome")
+
+if __name__ == "__main__":
+    main()
+EOF

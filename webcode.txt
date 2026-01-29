@@ -1,0 +1,883 @@
+cat > crypto_final.py << 'EOF'
+#!/usr/bin/env python3
+"""
+CRYPTOBOT Pi - VERSION SIMPLE ET FONCTIONNELLE
+Interface simple sans erreurs de syntaxe
+"""
+
+from flask import Flask, render_template_string, request, jsonify
+import hashlib
+import base64
+import os
+import re
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+app = Flask(__name__)
+
+# ==================== IMPLÉMENTATION DES ALGORITHMES ====================
+
+class CryptoBot:
+    """Classe principale pour les opérations cryptographiques"""
+    
+    @staticmethod
+    def caesar_cipher(text, shift, encrypt=True):
+        """Chiffrement/déchiffrement César"""
+        result = []
+        for char in text:
+            if char.isalpha():
+                base = ord('A') if char.isupper() else ord('a')
+                current_shift = shift if encrypt else -shift
+                result.append(chr((ord(char) - base + current_shift) % 26 + base))
+            else:
+                result.append(char)
+        return ''.join(result)
+    
+    @staticmethod
+    def vigenere_cipher(text, key, encrypt=True):
+        """Chiffrement/déchiffrement Vigenère"""
+        result = []
+        key_index = 0
+        key = key.upper()
+        
+        for char in text:
+            if char.isalpha():
+                shift = ord(key[key_index % len(key)]) - ord('A')
+                if not encrypt:
+                    shift = -shift
+                
+                base = ord('A') if char.isupper() else ord('a')
+                result.append(chr((ord(char) - base + shift) % 26 + base))
+                key_index += 1
+            else:
+                result.append(char)
+        return ''.join(result)
+    
+    @staticmethod
+    def aes_encrypt(text, password):
+        """Chiffrement AES-256-GCM"""
+        # Génération de la clé depuis le mot de passe
+        salt = os.urandom(16)
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+        fernet = Fernet(key)
+        
+        # Chiffrement
+        encrypted = fernet.encrypt(text.encode())
+        
+        # Retourne le salt + données chiffrées encodées en base64
+        return base64.urlsafe_b64encode(salt + encrypted).decode()
+    
+    @staticmethod
+    def aes_decrypt(encrypted_data, password):
+        """Déchiffrement AES-256-GCM"""
+        # Décodage des données
+        data = base64.urlsafe_b64decode(encrypted_data.encode())
+        salt = data[:16]
+        encrypted = data[16:]
+        
+        # Régénération de la clé
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(password.encode()))
+        fernet = Fernet(key)
+        
+        # Déchiffrement
+        return fernet.decrypt(encrypted).decode()
+    
+    @staticmethod
+    def sha256_hash(text):
+        """Calcul du hash SHA-256"""
+        return hashlib.sha256(text.encode()).hexdigest()
+    
+    @staticmethod  
+    def sha512_hash(text):
+        """Calcul du hash SHA-512"""
+        return hashlib.sha512(text.encode()).hexdigest()
+    
+    @staticmethod
+    def md5_hash(text):
+        """Calcul du hash MD5"""
+        return hashlib.md5(text.encode()).hexdigest()
+
+# Instance globale
+crypto_bot = CryptoBot()
+
+# ==================== HTML SIMPLE ====================
+
+HTML = '''
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoBot Pro</title>
+    <style>
+        /* Style simple et clair */
+        :root {
+            --primary: #4361ee;
+            --secondary: #3a0ca3;
+            --light: #ffffff;
+            --gray: #6c757d;
+            --dark: #212529;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: var(--dark);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            background: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        h1 {
+            color: var(--primary);
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            color: var(--gray);
+            font-size: 1.1rem;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 250px 1fr;
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+        
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        .sidebar {
+            background: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .algo-btn {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            margin: 8px 0;
+            background: #f8f9fa;
+            border: 2px solid transparent;
+            border-radius: 10px;
+            color: var(--dark);
+            font-size: 1rem;
+            text-align: left;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .algo-btn:hover {
+            background: #e9ecef;
+            border-color: var(--primary);
+        }
+        
+        .algo-btn.active {
+            background: var(--primary);
+            color: white;
+            font-weight: bold;
+        }
+        
+        .content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+            min-height: 500px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: var(--dark);
+        }
+        
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+        
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        textarea {
+            min-height: 120px;
+            resize: vertical;
+            font-family: monospace;
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: 15px;
+            margin: 25px 0;
+            flex-wrap: wrap;
+        }
+        
+        .btn {
+            padding: 14px 28px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn:hover {
+            background: #3a56d4;
+            transform: translateY(-2px);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .result-box {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 5px solid var(--primary);
+            margin-top: 25px;
+        }
+        
+        .result-title {
+            color: var(--primary);
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+        
+        .result-content {
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            border: 1px solid #e9ecef;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--primary);
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        footer {
+            text-align: center;
+            color: white;
+            margin-top: 30px;
+            padding: 20px;
+            font-size: 0.9rem;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border-left: 4px solid;
+        }
+        
+        .alert-info {
+            background: #e8f4fc;
+            border-left-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            border-left-color: #28a745;
+            color: #155724;
+        }
+        
+        .alert-danger {
+            background: #f8d7da;
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1> CryptoBot Pi</h1>
+            <p class="subtitle">Spécifique à votre Raspberry Pi</p>
+        </header>
+        
+        <div class="main-content">
+            <aside class="sidebar">
+                <h3 style="margin-bottom: 20px; color: var(--primary);">Algorithmes</h3>
+                <button class="algo-btn active" data-algo="caesar"> César</button>
+                <button class="algo-btn" data-algo="vigenere"> Vigenère</button>
+                <button class="algo-btn" data-algo="aes">AES-256</button>
+                <button class="algo-btn" data-algo="hash"> Hachage</button>
+            </aside>
+            
+            <main class="content">
+                <div id="tabContent">
+                    <!-- Le contenu sera généré par JavaScript -->
+                </div>
+            </main>
+        </div>
+        
+        <footer>
+            <p>CryptoBot Pi © 2026 - Développé avec Flask et Python</p>
+            <p>Traitement local 100% sécurisé</p>
+        </footer>
+    </div>
+
+    <script>
+        // Configuration
+        let currentAlgorithm = 'caesar';
+        
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('CryptoBot Pro initialisé');
+            initAlgoButtons();
+            loadAlgorithm(currentAlgorithm);
+        });
+        
+        // Gestion des boutons d'algorithmes
+        function initAlgoButtons() {
+            document.querySelectorAll('.algo-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    // Retirer la classe active de tous les boutons
+                    document.querySelectorAll('.algo-btn').forEach(b => {
+                        b.classList.remove('active');
+                    });
+                    
+                    // Ajouter la classe active au bouton cliqué
+                    this.classList.add('active');
+                    
+                    // Charger l'algorithme
+                    currentAlgorithm = this.dataset.algo;
+                    loadAlgorithm(currentAlgorithm);
+                });
+            });
+        }
+        
+        // Charger le contenu de l'algorithme
+        function loadAlgorithm(algoId) {
+            const tabContent = document.getElementById('tabContent');
+            
+            let html = '';
+            
+            switch(algoId) {
+                case 'caesar':
+                    html = `
+                        <h2 style="color: var(--primary); margin-bottom: 20px;"> Chiffrement César</h2>
+                        
+                        <div class="alert alert-info">
+                            Déplace chaque lettre d'un nombre fixe de positions dans l'alphabet.
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Texte :</label>
+                            <textarea id="caesarText" class="form-control">BONJOUR LE MONDE</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Décalage (0-25) :</label>
+                            <input type="number" id="caesarShift" value="3" min="0" max="25" class="form-control">
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button class="btn" onclick="encryptCaesar()"> Chiffrer</button>
+                            <button class="btn btn-secondary" onclick="decryptCaesar()"> Déchiffrer</button>
+                        </div>
+                    `;
+                    break;
+                    
+                case 'vigenere':
+                    html = `
+                        <h2 style="color: var(--primary); margin-bottom: 20px;"> Chiffrement Vigenère</h2>
+                        
+                        <div class="alert alert-info">
+                            Utilise une clé pour décaler chaque lettre différemment.
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Texte :</label>
+                            <textarea id="vigenereText" class="form-control">HELLO WORLD</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Clé :</label>
+                            <input type="text" id="vigenereKey" value="KEY" class="form-control">
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button class="btn" onclick="encryptVigenere()"> Chiffrer</button>
+                            <button class="btn btn-secondary" onclick="decryptVigenere()"> Déchiffrer</button>
+                        </div>
+                    `;
+                    break;
+                    
+                case 'aes':
+                    html = `
+                        <h2 style="color: var(--primary); margin-bottom: 20px;"> AES-256</h2>
+                        
+                        <div class="alert alert-info">
+                            Algorithme de chiffrement symétrique moderne et sécurisé.
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Texte :</label>
+                            <textarea id="aesText" class="form-control">Message secret</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Mot de passe :</label>
+                            <input type="password" id="aesPassword" value="MonMotDePasse123" class="form-control">
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button class="btn" onclick="encryptAES()"> Chiffrer</button>
+                            <button class="btn btn-secondary" onclick="decryptAES()"> Déchiffrer</button>
+                        </div>
+                    `;
+                    break;
+                    
+                case 'hash':
+                    html = `
+                        <h2 style="color: var(--primary); margin-bottom: 20px;"> Hachage</h2>
+                        
+                        <div class="alert alert-info">
+                            Génère une empreinte unique (hash) à partir de données.
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Texte :</label>
+                            <textarea id="hashText" class="form-control">monmotdepasse123</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Algorithme :</label>
+                            <select id="hashAlgo" class="form-control">
+                                <option value="sha256">SHA-256</option>
+                                <option value="sha512">SHA-512</option>
+                                <option value="md5">MD5</option>
+                            </select>
+                        </div>
+                        
+                        <div class="btn-group">
+                            <button class="btn" onclick="calculateHash()"> Calculer Hash</button>
+                        </div>
+                    `;
+                    break;
+            }
+            
+            html += '<div id="resultContainer"></div>';
+            tabContent.innerHTML = html;
+        }
+        
+        // Fonctions utilitaires
+        function showLoading() {
+            document.getElementById('resultContainer').innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Traitement en cours...</p>
+                </div>
+            `;
+        }
+        
+        function showResult(title, content, isError = false) {
+            const container = document.getElementById('resultContainer');
+            
+            container.innerHTML = `
+                <div class="result-box">
+                    <div class="result-title">${isError ? '❌ ' : '✅ '}${title}</div>
+                    <div class="result-content">${content}</div>
+                </div>
+            `;
+        }
+        
+        async function callAPI(endpoint, data) {
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erreur ' + response.status);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API Error:', error);
+                return {error: error.message};
+            }
+        }
+        
+        // Fonctions spécifiques aux algorithmes
+        
+        // César
+        async function encryptCaesar() {
+            const text = document.getElementById('caesarText').value;
+            const shift = parseInt(document.getElementById('caesarShift').value);
+            
+            if (!text.trim()) {
+                showResult('Erreur', 'Veuillez entrer un texte', true);
+                return;
+            }
+            
+            showLoading();
+            const result = await callAPI('/api/caesar/encrypt', {text: text, shift: shift});
+            
+            if (result.error) {
+                showResult('Erreur', result.error, true);
+            } else {
+                showResult('Texte chiffré', result.result);
+            }
+        }
+        
+        async function decryptCaesar() {
+            const text = document.getElementById('caesarText').value;
+            const shift = parseInt(document.getElementById('caesarShift').value);
+            
+            if (!text.trim()) {
+                showResult('Erreur', 'Veuillez entrer un texte', true);
+                return;
+            }
+            
+            showLoading();
+            const result = await callAPI('/api/caesar/decrypt', {text: text, shift: shift});
+            
+            if (result.error) {
+                showResult('Erreur', result.error, true);
+            } else {
+                showResult('Texte déchiffré', result.result);
+            }
+        }
+        
+        // Vigenère
+        async function encryptVigenere() {
+            const text = document.getElementById('vigenereText').value;
+            const key = document.getElementById('vigenereKey').value;
+            
+            if (!text.trim() || !key.trim()) {
+                showResult('Erreur', 'Veuillez remplir tous les champs', true);
+                return;
+            }
+            
+            showLoading();
+            const result = await callAPI('/api/vigenere/encrypt', {text: text, key: key});
+            
+            if (result.error) {
+                showResult('Erreur', result.error, true);
+            } else {
+                showResult('Texte chiffré', result.result);
+            }
+        }
+        
+        async function decryptVigenere() {
+            const text = document.getElementById('vigenereText').value;
+            const key = document.getElementById('vigenereKey').value;
+            
+            if (!text.trim() || !key.trim()) {
+                showResult('Erreur', 'Veuillez remplir tous les champs', true);
+                return;
+            }
+            
+            showLoading();
+            const result = await callAPI('/api/vigenere/decrypt', {text: text, key: key});
+            
+            if (result.error) {
+                showResult('Erreur', result.error, true);
+            } else {
+                showResult('Texte déchiffré', result.result);
+            }
+        }
+        
+        // AES
+        async function encryptAES() {
+            const text = document.getElementById('aesText').value;
+            const password = document.getElementById('aesPassword').value;
+            
+            if (!text.trim() || !password.trim()) {
+                showResult('Erreur', 'Veuillez remplir tous les champs', true);
+                return;
+            }
+            
+            showLoading();
+            const result = await callAPI('/api/aes/encrypt', {text: text, password: password});
+            
+            if (result.error) {
+                showResult('Erreur', result.error, true);
+            } else {
+                showResult('Texte chiffré (Base64)', result.result);
+            }
+        }
+        
+        async function decryptAES() {
+            const text = document.getElementById('aesText').value;
+            const password = document.getElementById('aesPassword').value;
+            
+            if (!text.trim() || !password.trim()) {
+                showResult('Erreur', 'Veuillez remplir tous les champs', true);
+                return;
+            }
+            
+            showLoading();
+            const result = await callAPI('/api/aes/decrypt', {text: text, password: password});
+            
+            if (result.error) {
+                showResult('Erreur', result.error, true);
+            } else {
+                showResult('Texte déchiffré', result.result);
+            }
+        }
+        
+        // Hash
+        async function calculateHash() {
+            const text = document.getElementById('hashText').value;
+            const algorithm = document.getElementById('hashAlgo').value;
+            
+            if (!text.trim()) {
+                showResult('Erreur', 'Veuillez entrer un texte', true);
+                return;
+            }
+            
+            showLoading();
+            const result = await callAPI('/api/sha256/hash', {text: text, algorithm: algorithm});
+            
+            if (result.error) {
+                showResult('Erreur', result.error, true);
+            } else {
+                showResult('Hash ' + algorithm.toUpperCase(), result.result);
+            }
+        }
+    </script>
+</body>
+</html>
+'''
+
+# ==================== ROUTES API ====================
+
+@app.route('/')
+def index():
+    """Page d'accueil"""
+    return HTML
+
+@app.route('/api/status')
+def api_status():
+    """Statut de l'API"""
+    return jsonify({'status': 'online', 'version': '1.0'})
+
+@app.route('/api/caesar/encrypt', methods=['POST'])
+def api_caesar_encrypt():
+    """Chiffrement César"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        shift = data.get('shift', 3)
+        
+        if not text:
+            return jsonify({'error': 'Texte requis'}), 400
+        
+        result = crypto_bot.caesar_cipher(text, shift, encrypt=True)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/caesar/decrypt', methods=['POST'])
+def api_caesar_decrypt():
+    """Déchiffrement César"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        shift = data.get('shift', 3)
+        
+        if not text:
+            return jsonify({'error': 'Texte requis'}), 400
+        
+        result = crypto_bot.caesar_cipher(text, shift, encrypt=False)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/vigenere/encrypt', methods=['POST'])
+def api_vigenere_encrypt():
+    """Chiffrement Vigenère"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        key = data.get('key', '')
+        
+        if not text or not key:
+            return jsonify({'error': 'Texte et clé requis'}), 400
+        
+        result = crypto_bot.vigenere_cipher(text, key, encrypt=True)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/vigenere/decrypt', methods=['POST'])
+def api_vigenere_decrypt():
+    """Déchiffrement Vigenère"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        key = data.get('key', '')
+        
+        if not text or not key:
+            return jsonify({'error': 'Texte et clé requis'}), 400
+        
+        result = crypto_bot.vigenere_cipher(text, key, encrypt=False)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/aes/encrypt', methods=['POST'])
+def api_aes_encrypt():
+    """Chiffrement AES"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        password = data.get('password', '')
+        
+        if not text or not password:
+            return jsonify({'error': 'Texte et mot de passe requis'}), 400
+        
+        result = crypto_bot.aes_encrypt(text, password)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/aes/decrypt', methods=['POST'])
+def api_aes_decrypt():
+    """Déchiffrement AES"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        password = data.get('password', '')
+        
+        if not text or not password:
+            return jsonify({'error': 'Texte et mot de passe requis'}), 400
+        
+        result = crypto_bot.aes_decrypt(text, password)
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/sha256/hash', methods=['POST'])
+def api_sha256_hash():
+    """Calcul de hash"""
+    try:
+        data = request.json
+        text = data.get('text', '')
+        algorithm = data.get('algorithm', 'sha256')
+        
+        if not text:
+            return jsonify({'error': 'Texte requis'}), 400
+        
+        if algorithm == 'sha256':
+            result = crypto_bot.sha256_hash(text)
+        elif algorithm == 'sha512':
+            result = crypto_bot.sha512_hash(text)
+        elif algorithm == 'md5':
+            result = crypto_bot.md5_hash(text)
+        else:
+            return jsonify({'error': 'Algorithme non supporté'}), 400
+        
+        return jsonify({'result': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ==================== LANCEMENT ====================
+
+if __name__ == '__main__':
+    print("=" * 60)
+    print("CRYPTOBOT Pi - VERSION SIMPLE")
+    print("=" * 60)
+    print(" Algorithmes disponibles :")
+    print("   • Chiffrement César")
+    print("   • Chiffrement Vigenère")
+    print("   • AES-256")
+    print("   • Hachage (SHA-256, SHA-512, MD5)")
+    print("=" * 60)
+    print(" Interface : http://localhost:8080")
+    print("Réseau   : http://[VOTRE_IP]:8080")
+    print("=" * 60)
+    
+    app.run(host='0.0.0.0', port=8080, debug=True)
+EOF
